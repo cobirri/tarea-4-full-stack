@@ -1,0 +1,262 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Gestión Full Stack - Proyecto Final</title>
+  <!-- React, ReactDOM y Babel desde CDN para ejecución SPA nativa -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; }
+    header { background-color: #1e293b; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+    .badge { padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+    .badge-admin { background-color: #ef4444; color: white; }
+    .badge-user { background-color: #3b82f6; color: white; }
+    .btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background-color: #2563eb; color: white; }
+    .btn-primary:hover { background-color: #1d4ed8; }
+    .btn-danger { background-color: #dc2626; color: white; }
+    .btn-secondary { background-color: #475569; color: white; }
+    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; width: 100%; }
+    .card { background-color: #1e293b; padding: 1.5rem; border-radius: 8px; border: 1px solid #334155; margin-bottom: 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .product-card { background-color: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between; }
+    .currency-tag { color: #10b981; font-weight: bold; font-size: 1.1rem; }
+    .currency-usd { color: #38bdf8; font-size: 0.9rem; }
+    input, select { width: 100%; padding: 0.6rem; margin-top: 0.4rem; margin-bottom: 1rem; background-color: #0f172a; border: 1px solid #334155; border-radius: 6px; color: white; }
+    .login-box { max-width: 400px; margin: 5rem auto; padding: 2rem; background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; }
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [token, setToken] = useState(localStorage.getItem('token') || '');
+      const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
+      const [usernameInput, setUsernameInput] = useState('');
+      const [passwordInput, setPasswordInput] = useState('');
+      const [roleInput, setRoleInput] = useState('user');
+      const [products, setProducts] = useState([]);
+      const [tipoCambio, setTipoCambio] = useState(null);
+      const [page, setPage] = useState(1);
+      const [totalPages, setTotalPages] = useState(1);
+      const [errorMsg, setErrorMsg] = useState('');
+
+      // Formulario producto (Admin)
+      const [prodNombre, setProdNombre] = useState('');
+      const [prodPrecio, setProdPrecio] = useState('');
+      const [prodDesc, setProdDesc] = useState('');
+
+      useEffect(() => {
+        if (token) {
+          cargarProductos(page);
+        }
+      }, [token, page]);
+
+      const cargarProductos = async (paginaActual) => {
+        try {
+          const res = await fetch(`/api/productos?page=${paginaActual}&limit=4`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.status === 401 || res.status === 403) {
+            cerrarSesion();
+            return;
+          }
+          const data = await res.json();
+          setProducts(data.data || []);
+          setTotalPages(data.pagination ? data.pagination.totalPages : 1);
+          setTipoCambio(data.tipoCambioUSD_MXN);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        setErrorMsg('');
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: usernameInput, password: passwordInput })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Error al iniciar sesion');
+
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify({ username: data.username, role: data.role }));
+          setToken(data.token);
+          setUser({ username: data.username, role: data.role });
+        } catch (err) {
+          setErrorMsg(err.message);
+        }
+      };
+
+      const handleRegister = async () => {
+        setErrorMsg('');
+        try {
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: usernameInput, password: passwordInput, role: roleInput })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Error al registrar usuario');
+          alert('Usuario registrado exitosamente. Ahora puedes iniciar sesión.');
+        } catch (err) {
+          setErrorMsg(err.message);
+        }
+      };
+
+      const handleCrearProducto = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch('/api/productos', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ nombre: prodNombre, precio: Number(prodPrecio), descripcion: prodDesc })
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Error al crear producto');
+            return;
+          }
+          setProdNombre('');
+          setProdPrecio('');
+          setProdDesc('');
+          cargarProductos(page);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const handleEliminarProducto = async (id) => {
+        if (!confirm('¿Seguro que deseas eliminar este producto?')) return;
+        try {
+          const res = await fetch(`/api/productos/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Error al eliminar');
+            return;
+          }
+          cargarProductos(page);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const cerrarSesion = () => {
+        localStorage.clear();
+        setToken('');
+        setUser({});
+        setProducts([]);
+      };
+
+      if (!token) {
+        return (
+          <div className="login-box">
+            <h2 style={{ textAlign: 'center', marginBottom: '1.5rem' }}>Acceso al Sistema</h2>
+            {errorMsg && <p style={{ color: '#ef4444', marginBottom: '1rem', textAlign: 'center' }}>{errorMsg}</p>}
+            <form onSubmit={handleLogin}>
+              <label>Usuario</label>
+              <input type="text" value={usernameInput} onChange={e => setUsernameInput(e.target.value)} required />
+              <label>Contraseña</label>
+              <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} required />
+              <label>Rol (para nuevo registro)</label>
+              <select value={roleInput} onChange={e => setRoleInput(e.target.value)}>
+                <option value="user">Usuario Regular</option>
+                <option value="admin">Administrador</option>
+              </select>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginBottom: '0.5rem' }}>Iniciar Sesión</button>
+              <button type="button" onClick={handleRegister} className="btn btn-secondary" style={{ width: '100%' }}>Registrar Nuevo Usuario</button>
+            </form>
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <header>
+            <div>
+              <strong>Panel Full Stack</strong>
+              <span style={{ marginLeft: '1rem', color: '#94a3b8' }}>Usuario: {user.username}</span>
+              <span className={`badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}`} style={{ marginLeft: '0.5rem' }}>{user.role}</span>
+            </div>
+            <button onClick={cerrarSesion} className="btn btn-danger">Cerrar Sesión</button>
+          </header>
+
+          <div className="container">
+            {tipoCambio && (
+              <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <strong>Integración API Externa (Divisas en Tiempo Real)</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Tipo de cambio oficial consumido por el backend con Axios</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>1 USD = ${tipoCambio} MXN</span>
+                </div>
+              </div>
+            )}
+
+            {user.role === 'admin' && (
+              <div className="card">
+                <h3>Agregar Nuevo Producto (Solo Admin)</h3>
+                <form onSubmit={handleCrearProducto} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginTop: '1rem' }}>
+                  <input placeholder="Nombre" value={prodNombre} onChange={e => setProdNombre(e.target.value)} required />
+                  <input type="number" placeholder="Precio (MXN)" value={prodPrecio} onChange={e => setProdPrecio(e.target.value)} required />
+                  <input placeholder="Descripción" value={prodDesc} onChange={e => setProdDesc(e.target.value)} />
+                  <button type="submit" className="btn btn-primary" style={{ height: '42px', marginTop: '6px' }}>Guardar Producto</button>
+                </form>
+              </div>
+            )}
+
+            <h3>Catálogo de Productos</h3>
+            <div className="grid" style={{ marginTop: '1rem' }}>
+              {products.length === 0 ? (
+                <p style={{ color: '#94a3b8' }}>No hay productos disponibles.</p>
+              ) : (
+                products.map(p => (
+                  <div key={p._id} className="product-card">
+                    <div>
+                      <h4>{p.nombre}</h4>
+                      <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: '0.5rem 0' }}>{p.descripcion || 'Sin descripción'}</p>
+                    </div>
+                    <div>
+                      <div className="currency-tag">${p.precioMXN} MXN</div>
+                      <div className="currency-usd">aprox. ${p.precioUSD} USD</div>
+                      {user.role === 'admin' && (
+                        <button onClick={() => handleEliminarProducto(p._id)} className="btn btn-danger" style={{ marginTop: '0.75rem', width: '100%', fontSize: '0.8rem' }}>Eliminar</button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pagination">
+              <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="btn btn-secondary">Anterior</button>
+              <span>Página {page} de {totalPages}</span>
+              <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="btn btn-secondary">Siguiente</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
